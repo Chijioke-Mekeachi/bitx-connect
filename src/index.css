@@ -39,20 +39,24 @@ All colors MUST be HSL.
     --radius: 0.5rem;
 
     --sidebar-background: 0 0% 98%;
-
     --sidebar-foreground: 240 5.3% 26.1%;
-
     --sidebar-primary: 240 5.9% 10%;
-
     --sidebar-primary-foreground: 0 0% 98%;
-
     --sidebar-accent: 240 4.8% 95.9%;
-
     --sidebar-accent-foreground: 240 5.9% 10%;
-
     --sidebar-border: 220 13% 91%;
-
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* Bitxchain neon palette */
+    --brand: 188 89% 54%; /* cyan */
+    --brand-2: 276 84% 55%; /* purple */
+    --brand-amber: 45 95% 54%; /* amber */
+    --surface-1: 216 45% 8%;
+    --surface-2: 215 35% 10%;
+
+    /* Gradients & shadows */
+    --gradient-hero: linear-gradient(135deg, hsl(var(--brand)), hsl(var(--brand-2)));
+    --gradient-subtle: radial-gradient(80% 80% at 20% 0%, hsl(var(--brand)/0.15), transparent 60%);
   }
 
   .dark {
@@ -91,6 +95,15 @@ All colors MUST be HSL.
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* Dark surfaces keep neon accents */
+    --brand: 188 89% 54%;
+    --brand-2: 276 84% 55%;
+    --brand-amber: 45 95% 54%;
+    --surface-1: 216 45% 8%;
+    --surface-2: 215 35% 10%;
+    --gradient-hero: linear-gradient(135deg, hsl(var(--brand)), hsl(var(--brand-2)));
+    --gradient-subtle: radial-gradient(80% 80% at 20% 0%, hsl(var(--brand)/0.15), transparent 60%);
   }
 }
 
