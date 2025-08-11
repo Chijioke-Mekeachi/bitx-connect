@@ -27,10 +27,10 @@ export default function LoginSignupPage() {
       let res;
       if (isLogin) {
         res = await login(formData.username, formData.password);
-        alert("Login successful!");
+        // alert("Login successful!");
       } else {
         res = await signup(formData.username, formData.password);
-        alert("Signup successful!");
+        // alert("Signup successful!");
       }
 
       // ✅ Store user in global context

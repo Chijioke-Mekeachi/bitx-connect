@@ -77,6 +77,8 @@ export default function DashboardPage() {
       setFormMessage("User not authenticated.");
       return;
     }
+
+    // Basic validation
     if (!form.price || !form.min_limit || !form.max_limit) {
       setFormMessage("Please fill price and limits.");
       return;
@@ -88,24 +90,23 @@ export default function DashboardPage() {
       setFormMessage("Blurt username and active key required for selling.");
       return;
     }
+
     setLoadingForm(true);
     setFormMessage("");
 
     try {
-      const payload = {
+      const res = await axios.post("http://localhost:8000/trades", {
         user_id: user.user_id,
         type: form.type,
         price: parseFloat(form.price),
         min_limit: parseFloat(form.min_limit),
         max_limit: parseFloat(form.max_limit),
         payment_methods: form.payment_methods,
-        completion: form.completion,
+        completion: Number(form.completion),
         confirmed: false,
         blurt_username: form.type === "sell" ? form.blurt_username : null,
         blurt_active_key: form.type === "sell" ? form.blurt_active_key : null,
-      };
-
-      const res = await axios.post("http://localhost:8000/trades", payload);
+      });
 
       if (res.data.status === "success") {
         setFormMessage("Trade offer created successfully!");
@@ -123,7 +124,7 @@ export default function DashboardPage() {
         fetchTrades(user.user_id);
         setShowModal(false);
       } else {
-        setFormMessage("Failed to create trade offer.");
+        setFormMessage(res.data.detail || "Failed to create trade offer.");
       }
     } catch (err) {
       setFormMessage(err.response?.data?.detail || "Error submitting trade.");
@@ -131,6 +132,7 @@ export default function DashboardPage() {
       setLoadingForm(false);
     }
   };
+
 
   const paymentOptions = [
     "Bank Transfer",
@@ -185,7 +187,7 @@ export default function DashboardPage() {
         {/* Pending Trades */}
         <Card className="bg-white/5 rounded-lg backdrop-blur-lg border border-white/20 p-5 flex flex-col">
           <CardHeader>
-            <CardTitle style={{color:'white'}}>Pending Trades</CardTitle>
+            <CardTitle style={{ color: 'white' }}>Pending Trades</CardTitle>
           </CardHeader>
           <CardContent>
             {pendingTrades.length === 0 ? (
@@ -208,6 +210,9 @@ export default function DashboardPage() {
                           {m}
                         </span>
                       ))}
+                      <p>Limits: ${trade.min_limit} - ${trade.max_limit}</p>
+                      <p>Completion: {trade.completion}%</p>
+
                     </div>
                   </div>
                   <span className="text-yellow-400 font-semibold">Pending</span>
@@ -220,7 +225,7 @@ export default function DashboardPage() {
         {/* Confirmed Trades */}
         <Card className="bg-white/5 rounded-lg backdrop-blur-lg border border-white/20 p-5 flex flex-col">
           <CardHeader>
-            <CardTitle style={{color:'white'}}>Confirmed Trades</CardTitle>
+            <CardTitle style={{ color: 'white' }}>Confirmed Trades</CardTitle>
           </CardHeader>
           <CardContent>
             {confirmedTrades.length === 0 ? (
@@ -424,11 +429,10 @@ export default function DashboardPage() {
 
               {formMessage && (
                 <p
-                  className={`mt-4 text-center ${
-                    formMessage.includes("success")
+                  className={`mt-4 text-center ${formMessage.includes("success")
                       ? "text-green-400"
                       : "text-red-400"
-                  }`}
+                    }`}
                 >
                   {formMessage}
                 </p>
