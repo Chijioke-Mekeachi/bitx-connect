@@ -1,5 +1,48 @@
 # Welcome to your Lovable project
 
+## Supabase Integration
+
+This project now uses Supabase as its backend database and authentication system.
+
+### Setup Instructions
+
+1. **Create a Supabase Project**
+   - Go to [supabase.com](https://supabase.com)
+   - Create a new project
+   - Wait for the project to be ready
+
+2. **Get Your Supabase Credentials**
+   - Go to Project Settings > API
+   - Copy your Project URL and anon/public key
+
+3. **Configure Environment Variables**
+   - Copy `.env.local` to your project root
+   - Replace the placeholder values with your actual Supabase credentials:
+     ```
+     VITE_SUPABASE_URL=your_actual_supabase_project_url
+     VITE_SUPABASE_ANON_KEY=your_actual_supabase_anon_key
+     ```
+
+4. **Run Database Migrations**
+   - In your Supabase dashboard, go to SQL Editor
+   - Copy and paste the contents of `supabase/migrations/create_p2p_schema.sql`
+   - Run the migration to create all necessary tables and policies
+
+5. **Enable Authentication**
+   - In Supabase dashboard, go to Authentication > Settings
+   - Configure your authentication settings as needed
+   - Email confirmation is disabled by default for development
+
+### Features
+
+- **User Authentication**: Email/password signup and login
+- **User Profiles**: Automatic profile creation with completion rates
+- **P2P Trading**: Create buy/sell offers for BLURT cryptocurrency
+- **Order Management**: Create and manage trading orders
+- **Payment Methods**: Support for multiple payment methods
+- **Real-time Updates**: Live updates for orders and messages
+- **Security**: Row Level Security (RLS) policies protect user data
+
 ## Project info
 
 **URL**: https://lovable.dev/projects/2950c6f2-2721-45b5-9498-90f62b8a3edd

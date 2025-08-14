@@ -1,32 +1,31 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import { User, X } from "lucide-react";
-import { useUser } from "@/context/UserContext";
+import { useAuthContext } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useOrders } from "@/hooks/useOrders";
+import { useOffers } from "@/hooks/useOffers";
+import { usePaymentMethods } from "@/hooks/usePaymentMethods";
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { user } = useUser();
+  const { user, profile, loading: authLoading } = useAuthContext();
+  const { orders, loading: ordersLoading } = useOrders();
+  const { offers, loading: offersLoading } = useOffers();
+  const { paymentMethods, createPaymentMethod } = usePaymentMethods();
 
-  const [pendingTrades, setPendingTrades] = useState([]);
-  const [confirmedTrades, setConfirmedTrades] = useState([]);
-  const [loadingTrades, setLoadingTrades] = useState(true);
-
-  // Form state for new trade
+  // Form state for new offer
   const [form, setForm] = useState({
     type: "buy",
     price: "",
-    min_limit: "",
-    max_limit: "",
-    payment_methods: [],
-    completion: 0,
+    min_amount: "",
+    max_amount: "",
+    payment_method_ids: [],
+    terms: "",
     blurt_username: "",
-    blurt_active_key: "",
-    confirmed: false,
   });
 
   const [loadingForm, setLoadingForm] = useState(false);
@@ -34,38 +33,21 @@ export default function DashboardPage() {
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
-    if (!user?.user_id) {
+    if (!authLoading && !user) {
       navigate("/auth", { replace: true });
-      return;
     }
-    fetchTrades(user.user_id).finally(() => setLoadingTrades(false));
-  }, [user]);
-
-  async function fetchTrades(user_id) {
-    try {
-      const [pendingRes, confirmedRes] = await Promise.all([
-        axios.get(`http://localhost:8000/trades/${user_id}/pending`),
-        axios.get(`http://localhost:8000/trades/${user_id}/confirmed`),
-      ]);
-      setPendingTrades(pendingRes.data);
-      setConfirmedTrades(confirmedRes.data);
-    } catch (error) {
-      console.error("Error fetching trades:", error);
-    }
-  }
+  }, [user, authLoading, navigate]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    if (name === "payment_methods") {
-      let updated = [...form.payment_methods];
+    if (name === "payment_method_ids") {
+      let updated = [...form.payment_method_ids];
       if (checked) {
         if (!updated.includes(value)) updated.push(value);
       } else {
         updated = updated.filter((m) => m !== value);
       }
-      setForm((f) => ({ ...f, payment_methods: updated }));
-    } else if (name === "completion") {
-      setForm((f) => ({ ...f, completion: Number(value) }));
+      setForm((f) => ({ ...f, payment_method_ids: updated }));
     } else {
       setForm((f) => ({ ...f, [name]: value }));
     }
@@ -73,21 +55,18 @@ export default function DashboardPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!user?.user_id) {
+    if (!user) {
       setFormMessage("User not authenticated.");
       return;
     }
 
     // Basic validation
-    if (!form.price || !form.min_limit || !form.max_limit) {
+    if (!form.price || !form.min_amount || !form.max_amount) {
       setFormMessage("Please fill price and limits.");
       return;
     }
-    if (
-      form.type === "sell" &&
-      (!form.blurt_username || !form.blurt_active_key)
-    ) {
-      setFormMessage("Blurt username and active key required for selling.");
+    if (form.type === "sell" && !form.blurt_username) {
+      setFormMessage("Blurt username required for selling.");
       return;
     }
 
@@ -95,61 +74,45 @@ export default function DashboardPage() {
     setFormMessage("");
 
     try {
-      const res = await axios.post("http://localhost:8000/trades", {
-        user_id: user.user_id,
+      await createOffer({
         type: form.type,
         price: parseFloat(form.price),
-        min_limit: parseFloat(form.min_limit),
-        max_limit: parseFloat(form.max_limit),
-        payment_methods: form.payment_methods,
-        completion: Number(form.completion),
-        confirmed: false,
-        blurt_username: form.type === "sell" ? form.blurt_username : null,
-        blurt_active_key: form.type === "sell" ? form.blurt_active_key : null,
+        min_amount: parseFloat(form.min_amount),
+        max_amount: parseFloat(form.max_amount),
+        terms: form.terms,
+        blurt_username: form.type === "sell" ? form.blurt_username : undefined,
+        payment_method_ids: form.payment_method_ids,
       });
 
-      if (res.data.status === "success") {
-        setFormMessage("Trade offer created successfully!");
-        setForm({
-          type: "buy",
-          price: "",
-          min_limit: "",
-          max_limit: "",
-          payment_methods: [],
-          completion: 0,
-          blurt_username: "",
-          blurt_active_key: "",
-          confirmed: false,
-        });
-        fetchTrades(user.user_id);
-        setShowModal(false);
-      } else {
-        setFormMessage(res.data.detail || "Failed to create trade offer.");
-      }
+      setFormMessage("Offer created successfully!");
+      setForm({
+        type: "buy",
+        price: "",
+        min_amount: "",
+        max_amount: "",
+        payment_method_ids: [],
+        terms: "",
+        blurt_username: "",
+      });
+      setShowModal(false);
     } catch (err) {
-      setFormMessage(err.response?.data?.detail || "Error submitting trade.");
+      setFormMessage(err.message || "Error creating offer.");
     } finally {
       setLoadingForm(false);
     }
   };
 
-
-  const paymentOptions = [
-    "Bank Transfer",
-    "PayPal",
-    "USDT",
-    "Cash",
-    "Mobile Money",
-    "Crypto Wallet",
-  ];
-
-  if (loadingTrades) {
+  if (authLoading || ordersLoading || offersLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-white bg-[#0a0a14]">
         Loading dashboard...
       </div>
     );
   }
+
+  const pendingOrders = orders.filter(order => ['pending', 'paid'].includes(order.status));
+  const completedOrders = orders.filter(order => ['released', 'cancelled'].includes(order.status));
+  const myOffers = offers.filter(offer => offer.profile_id === user?.id);
 
   return (
     <div className="min-h-screen p-6 text-white relative overflow-hidden bg-[#0a0a14]">
@@ -168,9 +131,9 @@ export default function DashboardPage() {
             <User size={28} />
           </div>
           <div>
-            <p className="text-2xl font-bold">{user?.username || "User"}</p>
+            <p className="text-2xl font-bold">{profile?.username || "User"}</p>
             <p className="text-sm text-white/70 select-text">
-              ID: {user?.user_id.slice(0, 8)}...
+              Completion: {profile?.completion_rate || 0}% • Trades: {profile?.total_trades || 0}
             </p>
           </div>
         </div>
@@ -178,79 +141,100 @@ export default function DashboardPage() {
           onClick={() => setShowModal(true)}
           className="z-10 bg-gradient-to-tr from-green-500 to-emerald-400 text-black font-semibold"
         >
-          + New Trade
+          + New Offer
         </Button>
       </header>
 
-      {/* Trades sections */}
-      <section className="relative z-10 grid md:grid-cols-2 gap-6">
-        {/* Pending Trades */}
+      {/* Dashboard sections */}
+      <section className="relative z-10 grid md:grid-cols-3 gap-6">
+        {/* My Offers */}
         <Card className="bg-white/5 rounded-lg backdrop-blur-lg border border-white/20 p-5 flex flex-col">
           <CardHeader>
-            <CardTitle style={{ color: 'white' }}>Pending Trades</CardTitle>
+            <CardTitle style={{ color: 'white' }}>My Offers</CardTitle>
           </CardHeader>
           <CardContent>
-            {pendingTrades.length === 0 ? (
-              <p className="text-white/70">No pending trades</p>
+            {myOffers.length === 0 ? (
+              <p className="text-white/70">No active offers</p>
             ) : (
-              pendingTrades.map((trade) => (
+              myOffers.map((offer) => (
                 <div
-                  key={trade.trade_id}
+                  key={offer.id}
                   className="flex justify-between items-center mb-3 p-3 rounded bg-white/10"
                 >
                   <div>
-                    <p className="font-semibold">{trade.type.toUpperCase()}</p>
-                    <p>${trade.price.toLocaleString()}</p>
-                    <div className="flex gap-2 mt-1 flex-wrap">
-                      {trade.payment_methods.map((m) => (
-                        <span
-                          key={m}
-                          className="bg-pink-600 px-2 py-0.5 rounded text-xs"
-                        >
-                          {m}
-                        </span>
-                      ))}
-                      <p>Limits: ${trade.min_limit} - ${trade.max_limit}</p>
-                      <p>Completion: {trade.completion}%</p>
-
-                    </div>
+                    <p className="font-semibold">{offer.type.toUpperCase()}</p>
+                    <p>₦{offer.price.toLocaleString()}</p>
+                    <p className="text-sm">₦{offer.min_amount} - ₦{offer.max_amount}</p>
                   </div>
-                  <span className="text-yellow-400 font-semibold">Pending</span>
+                  <span className={`font-semibold ${
+                    offer.status === 'active' ? 'text-green-400' : 'text-gray-400'
+                  }`}>
+                    {offer.status}
+                  </span>
                 </div>
               ))
             )}
           </CardContent>
         </Card>
 
-        {/* Confirmed Trades */}
+        {/* Pending Orders */}
         <Card className="bg-white/5 rounded-lg backdrop-blur-lg border border-white/20 p-5 flex flex-col">
           <CardHeader>
-            <CardTitle style={{ color: 'white' }}>Confirmed Trades</CardTitle>
+            <CardTitle style={{ color: 'white' }}>Active Orders</CardTitle>
           </CardHeader>
           <CardContent>
-            {confirmedTrades.length === 0 ? (
-              <p className="text-white/70">No confirmed trades</p>
+            {pendingOrders.length === 0 ? (
+              <p className="text-white/70">No active orders</p>
             ) : (
-              confirmedTrades.map((trade) => (
+              pendingOrders.map((order) => (
                 <div
-                  key={trade.trade_id}
+                  key={order.id}
                   className="flex justify-between items-center mb-3 p-3 rounded bg-white/10"
                 >
                   <div>
-                    <p className="font-semibold">{trade.type.toUpperCase()}</p>
-                    <p>${trade.price.toLocaleString()}</p>
-                    <div className="flex gap-2 mt-1 flex-wrap">
-                      {trade.payment_methods.map((m) => (
-                        <span
-                          key={m}
-                          className="bg-green-600 px-2 py-0.5 rounded text-xs"
-                        >
-                          {m}
-                        </span>
-                      ))}
-                    </div>
+                    <p className="font-semibold">
+                      {order.buyer_id === user?.id ? 'BUYING' : 'SELLING'}
+                    </p>
+                    <p>₦{order.fiat_amount.toLocaleString()}</p>
+                    <p className="text-sm">{order.amount_asset} BLURT</p>
                   </div>
-                  <span className="text-green-400 font-semibold">Confirmed</span>
+                  <span className={`font-semibold ${
+                    order.status === 'pending' ? 'text-yellow-400' : 'text-blue-400'
+                  }`}>
+                    {order.status}
+                  </span>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Completed Orders */}
+        <Card className="bg-white/5 rounded-lg backdrop-blur-lg border border-white/20 p-5 flex flex-col">
+          <CardHeader>
+            <CardTitle style={{ color: 'white' }}>Order History</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {completedOrders.length === 0 ? (
+              <p className="text-white/70">No completed orders</p>
+            ) : (
+              completedOrders.slice(0, 5).map((order) => (
+                <div
+                  key={order.id}
+                  className="flex justify-between items-center mb-3 p-3 rounded bg-white/10"
+                >
+                  <div>
+                    <p className="font-semibold">
+                      {order.buyer_id === user?.id ? 'BOUGHT' : 'SOLD'}
+                    </p>
+                    <p>₦{order.fiat_amount.toLocaleString()}</p>
+                    <p className="text-sm">{order.amount_asset} BLURT</p>
+                  </div>
+                  <span className={`font-semibold ${
+                    order.status === 'released' ? 'text-green-400' : 'text-red-400'
+                  }`}>
+                    {order.status}
+                  </span>
                 </div>
               ))
             )}
@@ -258,7 +242,7 @@ export default function DashboardPage() {
         </Card>
       </section>
 
-      {/* Modal for creating new trade */}
+      {/* Modal for creating new offer */}
       <AnimatePresence>
         {showModal && (
           <motion.div
@@ -274,7 +258,7 @@ export default function DashboardPage() {
               exit={{ scale: 0.9, opacity: 0 }}
             >
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold">Create New Trade Offer</h2>
+                <h2 className="text-xl font-semibold">Create New Offer</h2>
                 <button
                   onClick={() => setShowModal(false)}
                   className="text-gray-400 hover:text-white"
@@ -284,9 +268,9 @@ export default function DashboardPage() {
                 </button>
               </div>
               <form onSubmit={handleSubmit} className="space-y-5 text-white">
-                {/* Trade Type */}
+                {/* Offer Type */}
                 <div>
-                  <label className="block mb-1 font-semibold">Trade Type</label>
+                  <label className="block mb-1 font-semibold">Offer Type</label>
                   <select
                     name="type"
                     value={form.type}
@@ -300,7 +284,7 @@ export default function DashboardPage() {
 
                 {/* Price */}
                 <div>
-                  <label className="block mb-1 font-semibold">Price</label>
+                  <label className="block mb-1 font-semibold">Price (NGN per BLURT)</label>
                   <Input
                     type="number"
                     name="price"
@@ -316,11 +300,11 @@ export default function DashboardPage() {
                 {/* Limits */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block mb-1 font-semibold">Min Limit</label>
+                    <label className="block mb-1 font-semibold">Min Amount (NGN)</label>
                     <input
                       type="number"
-                      name="min_limit"
-                      value={form.min_limit}
+                      name="min_amount"
+                      value={form.min_amount}
                       onChange={handleChange}
                       step="0.01"
                       min="0"
@@ -329,11 +313,11 @@ export default function DashboardPage() {
                     />
                   </div>
                   <div>
-                    <label className="block mb-1 font-semibold">Max Limit</label>
+                    <label className="block mb-1 font-semibold">Max Amount (NGN)</label>
                     <input
                       type="number"
-                      name="max_limit"
-                      value={form.max_limit}
+                      name="max_amount"
+                      value={form.max_amount}
                       onChange={handleChange}
                       step="0.01"
                       min="0"
@@ -349,72 +333,56 @@ export default function DashboardPage() {
                     Payment Methods
                   </legend>
                   <div className="flex flex-wrap gap-3">
-                    {[
-                      "Bank Transfer",
-                      "PayPal",
-                      "USDT",
-                      "Cash",
-                      "Mobile Money",
-                      "Crypto Wallet",
-                    ].map((method) => (
+                    {paymentMethods.map((method) => (
                       <label
-                        key={method}
+                        key={method.id}
                         className="inline-flex items-center space-x-2 cursor-pointer"
                       >
                         <input
                           type="checkbox"
-                          name="payment_methods"
-                          value={method}
-                          checked={form.payment_methods.includes(method)}
+                          name="payment_method_ids"
+                          value={method.id}
+                          checked={form.payment_method_ids.includes(method.id)}
                           onChange={handleChange}
                           className="rounded cursor-pointer"
                         />
-                        <span>{method}</span>
+                        <span>{method.label}</span>
                       </label>
                     ))}
                   </div>
+                  {paymentMethods.length === 0 && (
+                    <p className="text-sm text-gray-400 mt-2">
+                      No payment methods found. Please add payment methods first.
+                    </p>
+                  )}
                 </fieldset>
 
-                {/* Completion */}
+                {/* Terms */}
                 <div>
-                  <label className="block mb-1 font-semibold">Completion %</label>
-                  <input
-                    type="number"
-                    name="completion"
-                    value={form.completion}
+                  <label className="block mb-1 font-semibold">Terms (Optional)</label>
+                  <textarea
+                    name="terms"
+                    value={form.terms}
                     onChange={handleChange}
-                    min={0}
-                    max={100}
-                    className="w-full bg-[#1a1a2e] rounded px-3 py-2 text-white border border-white/10"
+                    rows={3}
+                    className="w-full bg-[#1a1a2e] rounded px-3 py-2 text-white border border-white/10 resize-none"
+                    placeholder="Additional terms or instructions..."
                   />
                 </div>
 
-                {/* Blurt details if sell */}
+                {/* Blurt username if sell */}
                 {form.type === "sell" && (
-                  <>
-                    <div>
-                      <label className="block mb-1 font-semibold">Blurt Username</label>
-                      <input
-                        type="text"
-                        name="blurt_username"
-                        value={form.blurt_username}
-                        onChange={handleChange}
-                        required
-                        className="w-full bg-[#1a1a2e] rounded px-3 py-2 text-white border border-white/10"
-                      />
-                    </div>
-                    <div>
-                      <label className="block mb-1 font-semibold">Blurt Active Key</label>
-                      <input
-                        type="password"
-                        name="blurt_active_key"
-                        value={form.blurt_active_key}
-                        onChange={handleChange}
-                        required
-                        className="w-full bg-[#1a1a2e] rounded px-3 py-2 text-white border border-white/10"
-                      />
-                    </div>
-                  </>
+                  <div>
+                    <label className="block mb-1 font-semibold">Blurt Username</label>
+                    <input
+                      type="text"
+                      name="blurt_username"
+                      value={form.blurt_username}
+                      onChange={handleChange}
+                      required
+                      className="w-full bg-[#1a1a2e] rounded px-3 py-2 text-white border border-white/10"
+                    />
+                  </div>
                 )}
 
                 {/* Submit */}
@@ -423,7 +391,7 @@ export default function DashboardPage() {
                   disabled={loadingForm}
                   className="w-full bg-gradient-to-tr from-green-500 to-emerald-400 text-black font-semibold"
                 >
-                  {loadingForm ? "Submitting..." : "Create Offer"}
+                  {loadingForm ? "Creating..." : "Create Offer"}
                 </Button>
               </form>
 

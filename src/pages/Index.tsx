@@ -1,71 +1,41 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import CreateOfferDialog from "@/components/p2p/CreateOfferDialog";
-import { Offer, OfferCard } from "@/components/p2p/OfferCard";
+import { OfferCard } from "@/components/p2p/OfferCard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
-import heroImage from "@/assets/hero-p2p.jpg";
+import { useAuthContext } from "@/context/AuthContext";
+import { useOffers } from "@/hooks/useOffers";
+import { useOrders } from "@/hooks/useOrders";
 
 const Index = () => {
-  const [offers, setOffers] = useState<Offer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
+  const { offers, loading } = useOffers();
+  const { createOrder } = useOrders();
+  const { user, profile, signOut } = useAuthContext();
   const navigate = useNavigate();
 
-  // Fetch offers from backend
-  const fetchOffers = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch("http://localhost:5000/api/offers");
-      const data = await res.json();
-      setOffers(data);
-    } catch (error) {
-      console.error("Error fetching offers:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle posting a new offer
-  const handleCreateOffer = async (offerData: Omit<Offer, "id">) => {
-    if (!user) {
-      navigate("/auth");
-      return;
-    }
-    try {
-      const res = await fetch("http://localhost:5000/api/offers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...offerData, userId: user.id }),
-      });
-      if (!res.ok) throw new Error("Failed to create offer");
-      await fetchOffers();
-    } catch (error) {
-      console.error("Error creating offer:", error);
-    }
-  };
-
   // Handle Buy/Sell action
-  const onAction = async (offer: Offer) => {
+  const onAction = async (offer: any) => {
     if (!user) {
       navigate("/auth");
       return;
     }
+    
     try {
-      const res = await fetch("http://localhost:5000/api/trades", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          offerId: offer.id,
-          buyerId: user.id,
-          sellerId: offer.traderId, // this should come from backend
-        }),
+      // For now, create a simple order with minimum amount
+      const amount_asset = offer.min_amount / offer.price;
+      
+      await createOrder({
+        offer_id: offer.id,
+        amount_asset: amount_asset,
+        buyer_email: user.email,
       });
-      if (!res.ok) throw new Error("Trade action failed");
-      alert(`Trade initiated with ${offer.trader}`);
+      
+      alert(`Order created! Check your dashboard for details.`);
+      navigate("/dashboard");
     } catch (error) {
-      console.error(error);
+      console.error("Error creating order:", error);
+      alert("Failed to create order. Please try again.");
     }
   };
 
@@ -77,12 +47,6 @@ const Index = () => {
     canonical.setAttribute('rel', 'canonical');
     canonical.setAttribute('href', location.href);
     document.head.appendChild(canonical);
-
-    // Load user from local storage (from login)
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) setUser(JSON.parse(savedUser));
-
-    fetchOffers();
   }, []);
 
   return (
@@ -103,20 +67,20 @@ const Index = () => {
               </Button>
             ) : (
               <>
-                <span className="text-gray-300">Hello, {user.username}</span>
+                <span className="text-gray-300">Hello, {profile?.username}</span>
                 <Button
-                  onClick={() => {
-                    localStorage.removeItem("user");
-                    setUser(null);
-                  }}
+                  onClick={() => navigate("/dashboard")}
+                  className="bg-blue-500 hover:bg-blue-600"
+                >
+                  Dashboard
+                </Button>
+                <Button
+                  onClick={signOut}
                   className="bg-red-500 hover:bg-red-600"
                 >
                   Logout
                 </Button>
               </>
-            )}
-            {user && (
-              <CreateOfferDialog onCreateOffer={handleCreateOffer} />
             )}
           </div>
         </nav>
@@ -124,12 +88,6 @@ const Index = () => {
 
       {/* Hero Section */}
       <section className="relative overflow-hidden">
-        <img
-          src={heroImage}
-          alt="Bitxchain P2P neon hero showing crypto trading theme"
-          className="absolute inset-0 h-full w-full object-cover opacity-20"
-          loading="lazy"
-        />
         <div className="absolute inset-0 bg-black/50" />
         <div className="container relative py-16 md:py-24">
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
@@ -144,7 +102,7 @@ const Index = () => {
               className="bg-green-500 hover:bg-green-600 shadow-[0_0_15px_rgba(34,197,94,0.9)] text-white"
               size="lg"
             >
-              Start Trading
+              {user ? "Go to Dashboard" : "Start Trading"}
             </Button>
           </div>
         </div>
@@ -168,9 +126,24 @@ const Index = () => {
                 {loading ? (
                   <p>Loading offers...</p>
                 ) : (
-                  offers.filter(o => o.type === "sell").map(o => (
-                    <OfferCard key={o.id} offer={o} onAction={onAction} />
+                  offers.filter(o => o.type === "sell" && o.status === "active").map(o => (
+                    <OfferCard 
+                      key={o.id} 
+                      offer={{
+                        id: o.id,
+                        trader: o.profiles?.username || 'Anonymous',
+                        type: o.type,
+                        price: o.price,
+                        limits: { min: o.min_amount, max: o.max_amount },
+                        paymentMethods: o.offer_payment_methods?.map(opm => opm.payment_methods.label) || [],
+                        completion: o.profiles?.completion_rate || 0
+                      }} 
+                      onAction={() => onAction(o)} 
+                    />
                   ))
+                )}
+                {!loading && offers.filter(o => o.type === "sell" && o.status === "active").length === 0 && (
+                  <p className="text-center text-gray-400 py-8">No sell offers available</p>
                 )}
               </TabsContent>
 
@@ -178,9 +151,24 @@ const Index = () => {
                 {loading ? (
                   <p>Loading offers...</p>
                 ) : (
-                  offers.filter(o => o.type === "buy").map(o => (
-                    <OfferCard key={o.id} offer={o} onAction={onAction} />
+                  offers.filter(o => o.type === "buy" && o.status === "active").map(o => (
+                    <OfferCard 
+                      key={o.id} 
+                      offer={{
+                        id: o.id,
+                        trader: o.profiles?.username || 'Anonymous',
+                        type: o.type,
+                        price: o.price,
+                        limits: { min: o.min_amount, max: o.max_amount },
+                        paymentMethods: o.offer_payment_methods?.map(opm => opm.payment_methods.label) || [],
+                        completion: o.profiles?.completion_rate || 0
+                      }} 
+                      onAction={() => onAction(o)} 
+                    />
                   ))
+                )}
+                {!loading && offers.filter(o => o.type === "buy" && o.status === "active").length === 0 && (
+                  <p className="text-center text-gray-400 py-8">No buy offers available</p>
                 )}
               </TabsContent>
             </Tabs>

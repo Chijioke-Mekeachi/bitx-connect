@@ -3,17 +3,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Eye, EyeOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { login, signup } from "@/api/auth"; // ✅ backend API
-import { useUser } from "@/context/UserContext";
+import { useAuthContext } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 
 export default function LoginSignupPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
-  const [formData, setFormData] = useState({ username: "", password: "" });
+  const [formData, setFormData] = useState({ 
+    email: "", 
+    password: "", 
+    username: "" 
+  });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const { setUser } = useUser();
+  const { signIn, signUp } = useAuthContext();
   const navigate = useNavigate();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -23,26 +27,21 @@ export default function LoginSignupPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError("");
+
     try {
-      let res;
       if (isLogin) {
-        res = await login(formData.username, formData.password);
-        // alert("Login successful!");
+        await signIn(formData.email, formData.password);
       } else {
-        res = await signup(formData.username, formData.password);
-        // alert("Signup successful!");
+        if (!formData.username) {
+          throw new Error("Username is required for signup");
+        }
+        await signUp(formData.email, formData.password, formData.username);
       }
 
-      // ✅ Store user in global context
-      setUser({
-        user_id: res.user_id,
-        username: res.username,
-      });
-
-      // ✅ Redirect to dashboard
       navigate("/dashboard");
     } catch (err: any) {
-      alert(err.message || "Something went wrong");
+      setError(err.message || "Something went wrong");
     } finally {
       setLoading(false);
     }
@@ -64,18 +63,33 @@ export default function LoginSignupPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Username */}
+            {/* Email */}
             <div>
-              <label className="block mb-1 text-sm text-white">Username</label>
+              <label className="block mb-1 text-sm text-white">Email</label>
               <Input
-                type="text"
-                name="username"
-                value={formData.username}
+                type="email"
+                name="email"
+                value={formData.email}
                 onChange={handleChange}
                 required
                 className="bg-[#1a1a2e] border border-white/10 text-white"
               />
             </div>
+
+            {/* Username (only for signup) */}
+            {!isLogin && (
+              <div>
+                <label className="block mb-1 text-sm text-white">Username</label>
+                <Input
+                  type="text"
+                  name="username"
+                  value={formData.username}
+                  onChange={handleChange}
+                  required
+                  className="bg-[#1a1a2e] border border-white/10 text-white"
+                />
+              </div>
+            )}
 
             {/* Password */}
             <div className="relative">
@@ -86,6 +100,7 @@ export default function LoginSignupPage() {
                 value={formData.password}
                 onChange={handleChange}
                 required
+                minLength={6}
                 className="bg-[#1a1a2e] border border-white/10 text-white pr-10"
               />
               <button
@@ -96,6 +111,13 @@ export default function LoginSignupPage() {
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
+
+            {/* Error message */}
+            {error && (
+              <div className="text-red-400 text-sm text-center">
+                {error}
+              </div>
+            )}
 
             {/* Submit */}
             <Button
